@@ -36,11 +36,6 @@ public class TestcontainerStarterMojo extends AbstractMojo{
 
     public void execute() throws MojoExecutionException {
 
-        if ("pom".equals(project.getPackaging())) {
-            getLog().debug("Ignoring pom packaging.");
-            return;
-        }
-
         if(!project.isExecutionRoot()){
             getLog().info("Execution in submodule, skipping containers operation.");
             return;
