@@ -28,6 +28,12 @@ public class TestcontainerStarterMojo extends AbstractMojo{
     @Parameter(property = "useLocalDockerCompose")
     String useLocalDockerCompose = "true";
 
+    @Parameter(property = "autoListenDeclaredServices")
+    String autoListenDeclaredServices = "true";
+
+    @Parameter(property = "servicesToListen")
+    Map<String,String> servicesToListen = new HashMap<>();
+
     public void execute() throws MojoExecutionException {
 
         if ("pom".equals(project.getPackaging())) {
@@ -37,30 +43,51 @@ public class TestcontainerStarterMojo extends AbstractMojo{
 
         if(!project.isExecutionRoot()){
             getLog().info("Execution in submodule, skipping containers operation.");
+            return;
         }
 
         getLog().info("Execution is root, executing container start operation.");
 
-        final Map<String,Integer> servicePortsMap = new HashMap<>();
         try (InputStream inputStream = new FileInputStream(dockerComposeFilePath)){
-            final Map<String, Object> obj = new Yaml().load(inputStream);
-            final LinkedHashMap<String,LinkedHashMap> services = (LinkedHashMap<String, LinkedHashMap>) obj.get("services");
-            services.keySet().stream().forEach(serviceKey -> {
-                List<String> ports = (List) services.get(serviceKey).get("ports");
-                String portStr = ports.get(0).split(":")[1];
-                servicePortsMap.put(serviceKey,Integer.parseInt(portStr));
+
+            final Map<String,Integer> servicesPortListenContext = new HashMap<>();
+            final DockerComposeContainer dockerComposeContainer = new DockerComposeContainer(new File(dockerComposeFilePath));
+
+            addAutoParsedListenToContext(servicesPortListenContext, inputStream);
+            addCustomListenToContext(servicesPortListenContext);
+
+            servicesPortListenContext.keySet().stream().forEach( service -> {
+                getLog().info(String.format("Add listen to service ´%s´ port ´%d´ configured in docker-compose.yml.", service, servicesPortListenContext.get(service) ) );
+                dockerComposeContainer.withExposedService(service, servicesPortListenContext.get(service), Wait.forListeningPort() );
             });
+
+            dockerComposeContainer.withLocalCompose(Boolean.valueOf(useLocalDockerCompose)).start();
+
         } catch (IOException e) {
             throw new MojoExecutionException( String.format("Error while parsing yaml docker-compose file on path ´%s´",dockerComposeFilePath),e);
         }
+    }
 
-        DockerComposeContainer dockerComposeContainer = new DockerComposeContainer(new File(dockerComposeFilePath));
+    private void addAutoParsedListenToContext(Map<String, Integer> servicePortsMap, InputStream inputStream) {
+        if( Boolean.valueOf(autoListenDeclaredServices) ) {
+            final Map<String, Object> obj = new Yaml().load(inputStream);
+            final LinkedHashMap<String, LinkedHashMap> services = (LinkedHashMap<String, LinkedHashMap>) obj.get("services");
+            services.keySet().stream().forEach(serviceKey -> {
+                List<String> ports = (List) services.get(serviceKey).get("ports");
+                String portStr = ports.get(0).split(":")[1];
+                servicePortsMap.put(serviceKey, Integer.parseInt(portStr));
+            });
+        }
+    }
 
-        servicePortsMap.keySet().stream().forEach( service -> {
-            getLog().info(String.format("Add listen to service ´%s´ port ´%d´ configured in docker-compose.yml.", service, servicePortsMap.get(service) ) );
-            dockerComposeContainer.withExposedService(service, servicePortsMap.get(service), Wait.forListeningPort() );
-        });
+    private void addCustomListenToContext(Map<String, Integer> servicePortsMap) {
 
-        dockerComposeContainer.withLocalCompose(Boolean.valueOf(useLocalDockerCompose)).start();
+        if( servicesToListen.isEmpty() ) { return; }
+
+        servicesToListen.keySet().forEach(
+                service -> {
+                    getLog().info(String.format("Custom configuration listen to service ´%s´ and port ´%s´", service, servicesToListen.get(service)));
+                    servicePortsMap.put(service, Integer.valueOf(servicesToListen.get(service)));
+                });
     }
 }

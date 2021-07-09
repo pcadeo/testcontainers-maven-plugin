@@ -8,6 +8,8 @@ import org.apache.maven.project.MavenProject;
 import org.testcontainers.containers.DockerComposeContainer;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 
 @Mojo(name = "stop-containers", defaultPhase = LifecyclePhase.POST_INTEGRATION_TEST)
 public class TestContainersStopMojo extends AbstractMojo{
@@ -17,6 +19,15 @@ public class TestContainersStopMojo extends AbstractMojo{
 
     @Parameter(property = "dockerComposeFilePath",required = true)
     String dockerComposeFilePath;
+
+    @Parameter(property = "useLocalDockerCompose")
+    String useLocalDockerCompose = "true";
+
+    @Parameter(property = "autoListenDeclaredServices")
+    String autoListenDeclaredServices = "true";
+
+    @Parameter(property = "servicesToListen")
+    Map<String,String> servicesToListen = new HashMap<>();
 
     public void execute(){
 
